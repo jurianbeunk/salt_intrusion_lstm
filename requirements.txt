@@ -1,0 +1,7 @@
+python==3.9.15
+tensorflow==2.10.0
+scikit-learn==1.5.2
+numpy==1.26.
+pandas==2.2.2
+matplotlib==3.9.3
+fewsio==0.0.3
