@@ -1,0 +1,33 @@
+Here, Delft-FEWS should put 2 input files:
+- input_chloride (with shape (5, 12): (timesteps, features))
+- input_hydrometeo (with shape (6, 11): (timesteps, features))
+
+Note: the order should be correctly set in GA. 
+
+input_chloride.xml 
+"ClKr400Min",
+"ClKr400Mean",
+"ClKr400Max",
+"ClKr550Min",
+"ClKr550Mean",
+"ClKr550Max",
+"ClLkh250Min",
+"ClLkh250Mean",
+"ClLkh250Max",
+"ClLkh700Min",
+"ClLkh700Mean",
+"ClLkh700Max",
+
+input_hydrometeo.xml
+"HDrdMean",
+"HHvhMean",
+"HKrMin",
+"HKrMean",
+"HKrMax",
+"HVlaMean",
+"QHagMean",
+"QLobMean",
+"QTielMean",
+"WindEW",
+"WindNS",
+   
