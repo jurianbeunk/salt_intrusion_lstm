@@ -53,33 +53,6 @@ def read_input_from_pi_xml(input_file_path: Path):
     )
 
 
-def loadmodel(model_weights_dir: Path, nummodels: int):
-    """
-    Load LSTM salt intrusion model from specified location.
-
-    Parameters
-    ----------
-    path : str
-        Path from which the model should be loaded.
-    nummodels : int
-        Number of models in the ensemble.
-    (Cannot exceed the number of models stored in path)
-
-    # TODO: assert condition #################################################
-
-    Returns
-    -------
-    models : list of Functional
-        ensemble of models to be used directly in the Python envorionment.
-
-    """
-    models = []
-    for m in range(nummodels):
-        model = keras.models.load_model(model_weights_dir / f"LSTM_{m}")
-        models.append(model)
-    return models
-
-
 def ensemble_forecast(
     models: list,
     data: pd.DataFrame,
@@ -142,25 +115,37 @@ def ensemble_forecast(
 
     for m in range(NUMMODELS):
         """
-        TODO: when N_PAST=5, nfuture=1 and data.shape[0]=6, the dimension for salt_in etc 
-        will be (0, 5, 12). This means not forecast will be produced. Is this correct?  
+        TODO: when N_PAST=5, nfuture=1 and data.shape[0]=6, the dimension for salt_in etc
+        will be (0, 5, 12). This means not forecast will be produced. Is this correct? 
         """
         model = models[m]
-        salt_in = np.empty((data.shape[0] - N_PAST - nfuture, N_PAST, len(saltvars)))
+        salt_in = np.empty(
+            (data.shape[0] - N_PAST - nfuture, N_PAST, len(saltvars))
+        )
         salt_in.fill(np.nan)
-        qty_in = np.empty((data.shape[0] - N_PAST - nfuture, N_PAST + 1, len(qtyvars)))
+        qty_in = np.empty(
+            (data.shape[0] - N_PAST - nfuture, N_PAST + 1, len(qtyvars))
+        )
         qty_in.fill(np.nan)
 
         for i in range(N_PAST, data.shape[0] - nfuture):
-            salt_in[i - N_PAST, :, :] = np.array(data[saltvars][i - N_PAST : i])
-            qty_in[i - N_PAST, :, :] = np.array(data[qtyvars][i - N_PAST : i + 1])
+            salt_in[i - N_PAST, :, :] = np.array(
+                data[saltvars][i - N_PAST : i]
+            )
+            qty_in[i - N_PAST, :, :] = np.array(
+                data[qtyvars][i - N_PAST : i + 1]
+            )
 
         # Create a one day ahead forecast
         forecast[m, 0, :, :] = model.predict([salt_in, qty_in])
         # Backtransform the forecast from normalized scores to real
         # concentrations.
-        forecast_copies = np.hstack([forecast[m, 0, :, :], forecast[m, 0, :, 1:]])
-        forecast_real[m, 0, :, :] = scaler.inverse_transform(forecast_copies)[:, 0:12]
+        forecast_copies = np.hstack(
+            [forecast[m, 0, :, :], forecast[m, 0, :, 1:]]
+        )
+        forecast_real[m, 0, :, :] = scaler.inverse_transform(forecast_copies)[
+            :, 0:12
+        ]
 
         # We create a new salt_in dataset by taking all but the first
         # observation used for that issue time. Then append the forecast we
@@ -173,16 +158,21 @@ def ensemble_forecast(
         for j in range(1, nfuture):
             for i in range(N_PAST, data.shape[0] - nfuture):
                 salt_in[i - N_PAST, :, :] = np.vstack(
-                    (salt_in[i - N_PAST, 1:, :], forecast[m, j - 1, i - N_PAST, :])
+                    (
+                        salt_in[i - N_PAST, 1:, :],
+                        forecast[m, j - 1, i - N_PAST, :],
+                    )
                 )
                 qty_in[i - N_PAST, :, :] = np.array(
                     data[qtyvars][i - N_PAST + j : i + j + 1]
                 )
             forecast[m, j, :, :] = model.predict([salt_in, qty_in])
-            forecast_copies = np.hstack([forecast[m, j, :, :], forecast[m, j, :, 1:]])
-            forecast_real[m, j, :, :] = scaler.inverse_transform(forecast_copies)[
-                :, 0:12
-            ]
+            forecast_copies = np.hstack(
+                [forecast[m, j, :, :], forecast[m, j, :, 1:]]
+            )
+            forecast_real[m, j, :, :] = scaler.inverse_transform(
+                forecast_copies
+            )[:, 0:12]
 
     return forecast, forecast_real
 
@@ -279,24 +269,44 @@ if __name__ == "__main__":
     # Scale
     scaler = joblib.load(scaler_path)
     train_scaled = scaler.transform(train)
-    train_scaled = pd.DataFrame(train_scaled, index=dates[:split], columns=variables)
+    train_scaled = pd.DataFrame(
+        train_scaled, index=dates[:split], columns=variables
+    )
 
     # Input shape (7, 23)
     # NOTE does not work for (6, 23); why?
     dummy_input = train_scaled[:7]
 
-    models = loadmodel(model_weights_dir, NUMMODELS)
+    # Load the models from model_weights_dir
+    models = [
+        keras.models.load_model((model_weights_dir / f"LSTM_{x}"))
+        for x in range(NUMMODELS)
+    ]
 
+    # Shape (15, 1, 1, 12)
     forecast, forecast_real = ensemble_forecast(
         models, dummy_input, N_FUTURE, variables[0:12], variables[12:23]
     )
 
-    # Reformat output to DataFrame
-    output_dataframe = pd.DataFrame(
-        forecast_real.reshape(15, 12),
-        columns=[f"var_{x}" for x in range(12)],
-        index=[f"model_{x}" for x in range(15)],
+    # Create multi-index series for output with shape.
+    # Note that the t0_index has lenght 1, since operationally we will
+    # make one forecast at a time.
+    multi_index = pd.MultiIndex.from_product(
+        [
+            list(range(NUMMODELS)),  # Model dimension
+            [1],  # t0 dimension
+            list(range(N_FUTURE)),  # lead time dimension
+            list(range(12)),  # variable dimension
+        ],
+        names=["model", "t0", "leadtime", "variable"],
     )
+
+    # Create series by ravelling the array in C-style order
+    # (last index changing fastest)
+    series = pd.Series(data=forecast_real.ravel(), index=multi_index)
+
+    # Unstack the variable level
+    df = series.unstack(3)
 
     # Write to pi-xml as final step
 
