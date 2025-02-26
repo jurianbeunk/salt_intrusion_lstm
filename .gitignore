@@ -10,3 +10,7 @@ Data/*.csv
 old_scripts/*
 Models2/*
 
+
+General_adapter_run/Data/Features.csv
+.gitignore
+*.xml

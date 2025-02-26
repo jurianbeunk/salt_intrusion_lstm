@@ -1,2 +1,0 @@
-Make sure FEWS puts "diag.xml" here on startup of GA. 
-Here output.xml will be writeen 
